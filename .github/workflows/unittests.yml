@@ -1,0 +1,90 @@
+name: unit_tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      security-events: write
+      actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository }}
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: "stable"
+
+      - name: Install dependencies for libxls (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool libtool-bin gettext pkg-config libzip-dev
+          sudo apt-get install -y autoconf-archive
+
+      - name: Install dependencies for libxls (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew update
+          brew install autoconf automake libtool pkg-config libzip gettext libiconv
+          brew install autoconf-archive || true
+          brew link --force gettext || true
+          brew link --force libiconv || true
+
+      - name: Install dependencies for libxls (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          choco install -y msys2
+          refreshenv
+          echo "Windows environment set up; building with MSYS2 is not automated in this workflow yet."
+
+      - name: Build libxls submodule
+        if: matrix.os != 'windows-latest'
+        working-directory: libxls
+        run: |
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            export ACLOCAL_PATH="$(brew --prefix libiconv)/share/aclocal:$(brew --prefix gettext)/share/aclocal:$(brew --prefix autoconf-archive)/share/aclocal:$ACLOCAL_PATH"
+          fi
+          ./autogen.sh
+          ./configure
+          make -j$(nproc || sysctl -n hw.ncpu || echo 4)
+
+      - name: Install Dart dependencies
+        run: dart pub get
+
+      # - name: Static analysis (save output)
+      #   run: dart analyze > dart_analyze.txt || true
+
+      # - name: Dart Analyze to SARIF
+      #   uses: advanced-security/dart-analyzer-sarif@main
+      #   with:
+      #     input: dart_analyze.txt
+      #     output: dart_analyze.sarif
+
+      # - name: Upload SARIF
+      #   uses: github/codeql-action/upload-sarif@v4
+      #   with:
+      #     sarif_file: dart_analyze.sarif
+
+      - name: Run Dart analyze with annotations
+        if: matrix.os == 'ubuntu-latest'
+        uses: invertase/github-action-dart-analyzer@v1
+
+      - name: Run tests
+        run: dart test --chain-stack-traces

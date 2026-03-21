@@ -1,4 +1,4 @@
-import 'package:dart_xls/xls.dart';
+import 'package:dart_xls/dart_xls.dart';
 import 'package:test/test.dart';
 
 void main() {

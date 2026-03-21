@@ -43,3 +43,20 @@ void main() {
   wb.close();
 }
 ```
+
+## Platforms
+
+- linux: supported via native `libxls` (either submodule build or system package).
+- macos: supported via native `libxls` (.dylib).
+- windows: supported via native `libxls` (.dll).
+- android/ios: supported via Flutter embedding if `libxls` is bundled as a native library for the platform.
+- web: unsupported (Dart web does not support dart:ffi, `web` is marked unsupported in `pubspec.yaml`).
+
+# TODO
+- [ ] web platform support
+
+# references
+
+- [libxls](https://github.com/libxls/libxls)
+- [sqlite3.dart](https://github.com/simolus3/sqlite3.dart/tree/main)
+  - The multiplatform FFI bindings and native library loading patterns in `sqlite3.dart` were a helpful reference for this project.

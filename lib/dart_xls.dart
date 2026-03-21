@@ -93,6 +93,17 @@ class _LibXls {
     }
   }
 
+  static List<String> get _systemLibCandidates {
+    if (Platform.isLinux) {
+      return ['libxls.so', 'libxlsreader.so'];
+    } else if (Platform.isMacOS) {
+      return ['libxls.dylib', 'libxlsreader.dylib'];
+    } else if (Platform.isWindows) {
+      return ['libxls.dll', 'libxlsreader.dll'];
+    }
+    return [];
+  }
+
   static DynamicLibrary _openLibrary() {
     final candidates = <String>[];
     candidates.addAll(_submoduleCandidates);
@@ -112,8 +123,18 @@ class _LibXls {
       }
     }
 
+    // Fallback to system-installed libxls
+    for (final candidate in _systemLibCandidates) {
+      try {
+        return DynamicLibrary.open(candidate);
+      } catch (_) {
+        // ignore and continue
+      }
+    }
+
     throw StateError(
-        'Cannot find libxls in libxls submodule and build failed.');
+        'Cannot find libxls in libxls submodule, system library path, and build failed.\n'
+        'Install libxls from your package manager or build it from source.');
   }
 
   static final _XlsFunctions _f = _XlsFunctions(_dl);

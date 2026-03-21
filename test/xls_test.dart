@@ -1,6 +1,6 @@
 import 'dart:ffi';
 
-import 'package:dart_xls/xls.dart';
+import 'package:dart_xls/dart_xls.dart';
 import 'package:ffi/ffi.dart';
 import 'package:test/test.dart';
 
