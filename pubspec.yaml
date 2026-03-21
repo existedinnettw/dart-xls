@@ -13,8 +13,8 @@ platforms:
   # android:
   # ios:
   linux:
-  macos:
-  windows:
+  # macos:
+  # windows:
   # web:
 
 dependencies:

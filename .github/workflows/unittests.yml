@@ -6,18 +6,19 @@ on:
   pull_request:
     branches: [main]
 
-jobs:
-  test:
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-      fail-fast: false
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
-      security-events: write
-      actions: read # only required for a private repository by github/codeql-action/upload-sarif to get the Action run status
+permissions:
+  contents: read
+  security-events: write
+  actions: read
 
+jobs:
+  linux:
+    name: Linux Build & Test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [clang, gcc] #, gcc-9, gcc-10, gcc-11, gcc-12
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -29,62 +30,134 @@ jobs:
       - name: Set up Dart
         uses: dart-lang/setup-dart@v1
         with:
-          sdk: "stable"
+          sdk: stable
 
-      - name: Install dependencies for libxls (Linux)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Add Ubuntu toolchain PPA and install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake libtool libtool-bin gettext pkg-config libzip-dev
-          sudo apt-get install -y autoconf-archive
+          sudo apt-get install -y software-properties-common
+          sudo apt-add-repository -y ppa:ubuntu-toolchain-r/test
+          sudo apt-get update
+          sudo apt-get install -y gettext autoconf automake libtool libtool-bin pkg-config libzip-dev autoconf-archive ${{ matrix.compiler }}
 
-      - name: Install dependencies for libxls (macOS)
-        if: matrix.os == 'macos-latest'
-        run: |
-          brew update
-          brew install autoconf automake libtool pkg-config libzip gettext libiconv
-          brew install autoconf-archive || true
-          brew link --force gettext || true
-          brew link --force libiconv || true
-
-      - name: Install dependencies for libxls (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          choco install -y msys2
-          refreshenv
-          echo "Windows environment set up; building with MSYS2 is not automated in this workflow yet."
-
-      - name: Build libxls submodule
-        if: matrix.os != 'windows-latest'
+      - name: Build libxls
         working-directory: libxls
         run: |
-          if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            export ACLOCAL_PATH="$(brew --prefix libiconv)/share/aclocal:$(brew --prefix gettext)/share/aclocal:$(brew --prefix autoconf-archive)/share/aclocal:$ACLOCAL_PATH"
-          fi
           ./autogen.sh
-          ./configure
-          make -j$(nproc || sysctl -n hw.ncpu || echo 4)
+          ./configure CC=${{ matrix.compiler }}
+          make -j$(nproc || sysctl -n hw.ncpu || echo 2)
+
+      - name: Run libxls tests
+        working-directory: libxls
+        run: |
+          make check
+          ./test2_libxls test/files/test2.xls
 
       - name: Install Dart dependencies
         run: dart pub get
 
-      # - name: Static analysis (save output)
-      #   run: dart analyze > dart_analyze.txt || true
-
-      # - name: Dart Analyze to SARIF
-      #   uses: advanced-security/dart-analyzer-sarif@main
-      #   with:
-      #     input: dart_analyze.txt
-      #     output: dart_analyze.sarif
-
-      # - name: Upload SARIF
-      #   uses: github/codeql-action/upload-sarif@v4
-      #   with:
-      #     sarif_file: dart_analyze.sarif
-
       - name: Run Dart analyze with annotations
-        if: matrix.os == 'ubuntu-latest'
         uses: invertase/github-action-dart-analyzer@v1
 
-      - name: Run tests
+      - name: Run Dart tests
         run: dart test --chain-stack-traces
+
+  macos:
+    name: macOS Build & Test
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [clang, gcc]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository }}
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install brew dependencies
+        run: |
+          brew update
+          brew install automake autoconf libtool pkg-config libzip gettext libiconv autoconf-archive
+          brew link --force gettext || true
+          brew link --force libiconv || true
+
+      - name: Build libxls
+        working-directory: libxls
+        run: |
+          export ACLOCAL_PATH="$(brew --prefix libiconv)/share/aclocal:$(brew --prefix gettext)/share/aclocal:$(brew --prefix autoconf-archive)/share/aclocal:$ACLOCAL_PATH"
+          ./autogen.sh
+          ./configure CC=${{ matrix.compiler }}
+          make -j$(sysctl -n hw.ncpu)
+
+      - name: Run libxls tests
+        working-directory: libxls
+        run: |
+          make check
+          ./test2_libxls test/files/test2.xls
+
+      - name: Install Dart dependencies
+        run: dart pub get
+
+      - name: Run Dart tests
+        run: dart test --chain-stack-traces
+
+  windows:
+    name: Windows Build & Test
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: |
+            base-devel
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-libiconv
+            automake
+            autoconf
+            libtool
+            pkg-config
+            autoconf-archive
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.repository }}
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Build libxls
+        working-directory: libxls
+        run: |
+          autoreconf -i -f
+          ./configure
+          make -j$(nproc || echo 2)
+
+      - name: Run libxls tests
+        working-directory: libxls
+        run: |
+          make check
+          ./test2_libxls test/files/test2.xls
+
+      - name: Install Dart dependencies
+        run: dart pub get
+
+      - name: Run Dart tests
+        run: dart test --chain-stack-traces
+
