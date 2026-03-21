@@ -1,0 +1,14 @@
+{
+    "servers": {
+        "dart": {
+            "command": "dart",
+            "args": [
+                "mcp-server"
+            ]
+        },
+        "deepwiki": {
+            "url": "https://mcp.deepwiki.com/mcp",
+            "type": "http"
+        },
+    }
+}
